@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # project-c · CloudflareSpeedTest Web 控制台
 
 Rust 实现的 Cloudflare CDN IP 延迟 / 下载速度测速工具，自带浏览器图形界面，单文件交付。
@@ -261,3 +262,6 @@ GitHub REST API 强制要求 User-Agent 头，本程序已内置；仍报 403 �
 ## 附录 F · 协议
 
 测速内核设计与参数体系取自 [aspnmy/CloudflareSpeedTest](https://github.com/aspnmy/CloudflareSpeedTest)（GPL-3.0），本项目沿用 GPL-3.0。Web UI 交互参考 [byJoey/yx-tools](https://github.com/byJoey/yx-tools)（MIT）。
+=======
+# CloudflareSpeedTest_rust
+>>>>>>> faf08a7816609c5e1c2f19f827edc095f911a38f
