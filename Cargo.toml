@@ -1,0 +1,39 @@
+[package]
+name = "project-c"
+version = "0.1.0"
+edition = "2021"
+description = "Rust CloudflareSpeedTest core with a browser Web GUI"
+license = "GPL-3.0"
+
+[dependencies]
+# ---- web ----
+axum = { version = "0.7", default-features = false, features = ["tokio", "json", "query", "http1", "http2"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "sync", "fs"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+clap = { version = "4", features = ["derive"] }
+
+# ---- speed test core (same set as upstream Rust core) ----
+futures = "0.3"
+reqwest = { version = "0.12", default-features = false }
+csv = "1"
+ipnetwork = "0.20"
+regex = "1"
+rand = "0.8"
+base64 = "0.22"
+
+[features]
+# 默认走系统 TLS：Windows = schannel，Linux/macOS = OpenSSL / Security.framework。
+# 系统 TLS 不需要 C 编译器，任何环境都能 cargo build 通过。
+# 想要纯 Rust 的 rustls 后端用：cargo build --release --no-default-features --features rustls
+# （rustls 依赖 ring，需要本机有 C 编译器）
+default = ["native-tls"]
+native-tls = ["reqwest/native-tls"]
+rustls = ["reqwest/rustls-tls"]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
