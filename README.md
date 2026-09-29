@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # project-c · CloudflareSpeedTest Web 控制台
 
 Rust 实现的 Cloudflare CDN IP 延迟 / 下载速度测速工具，自带浏览器图形界面，单文件交付。
@@ -136,6 +135,7 @@ project-c/
 - 跨平台单二进制（Windows / Linux / macOS），前端内嵌、无运行时依赖
 - 数据目录优先级：环境变量 `CFST_DATA_DIR` > 当前工作目录 > 可执行文件目录
 - 配置与凭据落盘：`config.json`（测速参数）、`report.json`（上报配置，Token 不下发）
+- GitHub Actions 自动发行：推送 `v*` 标签即自动编译 Windows / Linux / macOS 四套二进制并发布 Release
 
 ---
 
@@ -166,6 +166,8 @@ cargo build --release --no-default-features --features rustls
 ```
 
 Linux 缺 OpenSSL 时：`apt install -y pkg-config libssl-dev`，或改用 rustls 后端。产物：Windows `target\release\project-c.exe`，Linux / macOS `target/release/project-c`（必要时 `chmod +x`）。
+
+不想自己编译：到仓库的 Releases 页面直接下载对应平台的压缩包（由 GitHub Actions 自动构建）。
 
 ```bash
 # Web 控制台（默认命令）：监听 127.0.0.1:8080 并自动打开浏览器
@@ -262,6 +264,3 @@ GitHub REST API 强制要求 User-Agent 头，本程序已内置；仍报 403 �
 ## 附录 F · 协议
 
 测速内核设计与参数体系取自 [aspnmy/CloudflareSpeedTest](https://github.com/aspnmy/CloudflareSpeedTest)（GPL-3.0），本项目沿用 GPL-3.0。Web UI 交互参考 [byJoey/yx-tools](https://github.com/byJoey/yx-tools)（MIT）。
-=======
-# CloudflareSpeedTest_rust
->>>>>>> faf08a7816609c5e1c2f19f827edc095f911a38f
