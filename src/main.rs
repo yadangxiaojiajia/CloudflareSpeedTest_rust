@@ -1,4 +1,4 @@
-//! project-c —— Rust CloudflareSpeedTest 内核 + 浏览器 Web GUI
+//! CloudflareSpeedTest_rust —— Rust CloudflareSpeedTest 内核 + 浏览器 Web GUI
 
 mod api;
 mod config;
@@ -19,7 +19,7 @@ use utils::{data_dir, resolve};
 
 #[derive(Parser, Debug)]
 #[command(
-    name = "project-c",
+    name = "CloudflareSpeedTest_rust",
     version,
     about = "Cloudflare CDN IP 延迟/速度测速工具（Rust 内核 + Web 控制台）"
 )]
@@ -69,7 +69,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 async fn web(dir: &std::path::Path, listen: &str, open: bool) -> Result<(), Box<dyn std::error::Error>> {
-    println!("# project-c v{}", env!("CARGO_PKG_VERSION"));
+    println!("# CloudflareSpeedTest_rust v{}", env!("CARGO_PKG_VERSION"));
     println!("数据目录: {}", dir.display());
 
     let runner = Runner::new(dir.to_path_buf());
@@ -92,7 +92,7 @@ async fn web(dir: &std::path::Path, listen: &str, open: bool) -> Result<(), Box<
 
 /// 命令行模式：直接调用内核，不经 Web 层
 async fn cli_test(dir: &std::path::Path, cfg: SpeedConfig) -> Result<(), Box<dyn std::error::Error>> {
-    println!("# CloudflareSpeedTest v{} (project-c)\n", env!("CARGO_PKG_VERSION"));
+    println!("# CloudflareSpeedTest v{} (CloudflareSpeedTest_rust)\n", env!("CARGO_PKG_VERSION"));
 
     let hooks: HooksRef = Arc::new(NoopHooks);
     match run_speedtest(&cfg, hooks).await {

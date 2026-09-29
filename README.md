@@ -1,4 +1,4 @@
-# project-c · CloudflareSpeedTest Web 控制台
+# CloudflareSpeedTest_rust · CloudflareSpeedTest Web 控制台
 
 Rust 实现的 Cloudflare CDN IP 延迟 / 下载速度测速工具，自带浏览器图形界面，单文件交付。
 
@@ -37,7 +37,7 @@ Cloudflare 用 anycast 广播同一批 IP 段：同一个域名，从不同地�
 2. **界面不做任何测速判断。** 浏览器只是「遥控器」：收参数、发状态、画表格。所有筛选 / 排序 / 达标规则都在内核里，保证「界面上看到的」永远等于「内核跑出来的」。
 3. **参数单一真源。** `SpeedConfig` 一个结构体同时派生命令行参数（clap）与序列化（serde）：GUI 表单、CLI 参数、`config.json` 三者共用同一份定义。将来新增参数只需加一个字段，三端同时生效，不存在「界面能改但内核不认」。
 4. **不加参考项目没有的「额外功能」。** 没有评分系统、没有推荐 IP、没有账号 / 数据库 / 云同步。唯一的扩展是结果出口（复制格式、Worker / GitHub 上报），因为那是测速的真正目的，而不是新功能。
-5. **随时可以回到命令行。** 界面左下角实时显示当前参数等价的命令行字符串；`project-c test` 子命令与界面参数完全同构。GUI 与 CLI 互为备份，谁都不锁死用户。
+5. **随时可以回到命令行。** 界面左下角实时显示当前参数等价的命令行字符串；`CloudflareSpeedTest_rust test` 子命令与界面参数完全同构。GUI 与 CLI 互为备份，谁都不锁死用户。
 
 ---
 
@@ -74,7 +74,7 @@ Cloudflare 用 anycast 广播同一批 IP 段：同一个域名，从不同地�
 ### 3.5 目录结构
 
 ```
-project-c/
+CloudflareSpeedTest_rust/
 ├── Cargo.toml              # 依赖与构建配置
 ├── README.md
 ├── ip.txt                  # 默认 IPv4 段（Cloudflare 官方）
@@ -165,21 +165,21 @@ cargo build --release
 cargo build --release --no-default-features --features rustls
 ```
 
-Linux 缺 OpenSSL 时：`apt install -y pkg-config libssl-dev`，或改用 rustls 后端。产物：Windows `target\release\project-c.exe`，Linux / macOS `target/release/project-c`（必要时 `chmod +x`）。
+Linux 缺 OpenSSL 时：`apt install -y pkg-config libssl-dev`，或改用 rustls 后端。产物：Windows `target\release\CloudflareSpeedTest_rust.exe`，Linux / macOS `target/release/CloudflareSpeedTest_rust`（必要时 `chmod +x`）。
 
 不想自己编译：到仓库的 Releases 页面直接下载对应平台的压缩包（由 GitHub Actions 自动构建）。
 
 ```bash
 # Web 控制台（默认命令）：监听 127.0.0.1:8080 并自动打开浏览器
-project-c
+CloudflareSpeedTest_rust
 
 # 局域网 / 服务器
-project-c web --listen 0.0.0.0:8080 --no-open
+CloudflareSpeedTest_rust web --listen 0.0.0.0:8080 --no-open
 
 # 命令行测速（参数与界面一致）
-project-c test -n 500 -t 6 --tl 300
-project-c test --httping --cfcolo "LAX,SJC" --dd
-project-c test --ip "104.16.0.0/13,1.1.1.0/24" -o result.csv
+CloudflareSpeedTest_rust test -n 500 -t 6 --tl 300
+CloudflareSpeedTest_rust test --httping --cfcolo "LAX,SJC" --dd
+CloudflareSpeedTest_rust test --ip "104.16.0.0/13,1.1.1.0/24" -o result.csv
 ```
 
 > 绑定 `0.0.0.0` 会让同网段所有人都能操作测速，请自行确认网络环境。
@@ -197,7 +197,7 @@ project-c test --ip "104.16.0.0/13,1.1.1.0/24" -o result.csv
 | 每 IP 次数 | `-t` | 每个 IP 连几次取平均，顺带算丢包率 | 4 |
 | 测速端口 | `--tp` | TCP / HTTP 连接端口 | 443 |
 | 显示数量 | `-p` | 界面 / 终端打印多少条，0 = 全部 | 10 |
-| 测速地址 | `--url` | HTTPing 请求地址 + 下载测速地址 | `https://cf.xiu2.xyz/url` |
+| 测速地址 | `--url` | HTTPing 请求地址 + 下载测速地址 | `https://speed.cloudflare.com/__down?bytes=99000000` |
 | 延迟测速模式 | `--httping` | 默认 TCPing（TCP 握手）；开启后走 HTTP 请求 | TCPing |
 | 有效状态码 | `--httping-code` | 仅 HTTPing 生效，0 = 接受 100~599 | 0 |
 | 地区码过滤 | `--cfcolo` | 仅 HTTPing 生效，如 `HKG,SJC`，留空不过滤 | 空 |

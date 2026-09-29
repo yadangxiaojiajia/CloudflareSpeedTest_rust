@@ -14,7 +14,7 @@ pub const DEFAULT_PORT: u16 = 443;
 pub const DEFAULT_PING_TIMES: u32 = 4;
 
 /// 默认下载测速 URL
-pub const DEFAULT_DOWNLOAD_URL: &str = "https://cf.xiu2.xyz/url";
+pub const DEFAULT_DOWNLOAD_URL: &str = "https://speed.cloudflare.com/__down?bytes=99000000";
 /// 默认下载测速超时（秒）
 pub const DEFAULT_DOWNLOAD_TIMEOUT_SECS: u64 = 10;
 /// 默认下载测速数量

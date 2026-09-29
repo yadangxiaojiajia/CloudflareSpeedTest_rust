@@ -1,5 +1,5 @@
 [package]
-name = "project-c"
+name = "CloudflareSpeedTest_rust"
 version = "0.1.0"
 edition = "2021"
 description = "Rust CloudflareSpeedTest core with a browser Web GUI"

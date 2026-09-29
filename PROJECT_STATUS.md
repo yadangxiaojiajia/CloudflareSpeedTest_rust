@@ -1,7 +1,7 @@
 # PROJECT_STATUS.md
 
 > 记录时间：2026-09-28 19:40（GMT+8）
-> 项目：project-c —— Rust CloudflareSpeedTest 内核 + 浏览器 Web GUI
+> 项目：CloudflareSpeedTest_rust —— Rust CloudflareSpeedTest 内核 + 浏览器 Web GUI
 > 工作区：`C:\Users\24200\Desktop\qoder\CFST`（已从 WorkBuddy 搬迁）
 > 状态：**release 构建已打通；新增「上报 Worker / 上报 GitHub」功能并完成界面验证；真实上报待用户凭自己凭据实测**
 
@@ -146,7 +146,7 @@ cargo build --release
 cd /c/Users/24200/Desktop/qoder/CFST
 export PATH="/c/Users/24200/.workbuddy/binutils/mingw64/bin:$PATH"
 cargo build --release
-./target/release/project-c.exe web --listen 127.0.0.1:8080 --no-open
+./target/release/CloudflareSpeedTest_rust.exe web --listen 127.0.0.1:8080 --no-open
 ```
 
 ### 6.2 上报功能验证（需用户凭据）

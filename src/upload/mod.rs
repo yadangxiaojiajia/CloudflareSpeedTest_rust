@@ -198,7 +198,7 @@ pub async fn upload_worker(
 // ---------- GitHub 上报 ----------
 
 /// GitHub REST API 强制要求 User-Agent 头，缺失直接 403
-const GH_USER_AGENT: &str = concat!("project-c/", env!("CARGO_PKG_VERSION"));
+const GH_USER_AGENT: &str = concat!("CloudflareSpeedTest_rust/", env!("CARGO_PKG_VERSION"));
 
 /// 把优选列表写入 GitHub 仓库文件，已存在则带 sha 更新
 pub async fn upload_github(

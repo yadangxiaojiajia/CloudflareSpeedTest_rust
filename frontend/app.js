@@ -120,7 +120,7 @@ function toCliArgs(c) {
   if (c.download_num !== 10) a.push(`--dn ${c.download_num}`);
   if (c.download_time !== 10) a.push(`--dt ${c.download_time}`);
   if (c.port !== 443) a.push(`--tp ${c.port}`);
-  if (c.url && c.url !== 'https://cf.xiu2.xyz/url') a.push(`--url ${c.url}`);
+  if (c.url && c.url !== 'https://speed.cloudflare.com/__down?bytes=99000000') a.push(`--url ${c.url}`);
   if (c.httping) a.push('--httping');
   if (c.httping_code) a.push(`--httping-code ${c.httping_code}`);
   if (c.cfcolo) a.push(`--cfcolo ${c.cfcolo}`);
