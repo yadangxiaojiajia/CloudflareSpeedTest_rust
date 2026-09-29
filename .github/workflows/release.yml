@@ -37,7 +37,7 @@ jobs:
             pack: targz
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -61,7 +61,7 @@ jobs:
             tar -czf "dist/${NAME}.tar.gz" -C "target/${{ matrix.target }}/release" "${{ matrix.bin }}"
           fi
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: asset-${{ matrix.asset }}
           path: dist/*
@@ -71,7 +71,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v6
         with:
           path: assets
           merge-multiple: true
@@ -79,7 +79,7 @@ jobs:
       - name: 查看产物
         run: ls -lh assets
 
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           files: assets/*
           generate_release_notes: true
