@@ -110,6 +110,10 @@ function collect() {
     output: $('#inOutput').value.trim() || 'result.csv',
     disable_download: $('#segDl button.on').dataset.dl === 'off',
     debug: $('#inDebug').checked,
+    quota_enabled: $('#inQuotaEnabled').checked,
+    quotas: readQuotas(),
+    sample_pool: 2000,
+    allip_cap: 20000,
   };
 }
 
@@ -135,6 +139,9 @@ function toCliArgs(c) {
   if (c.output && c.output !== 'result.csv') a.push(`-o ${c.output}`);
   if (c.disable_download) a.push('--dd');
   if (c.debug) a.push('--debug');
+  if (c.quota_enabled && c.quotas.length) {
+    a.push(`[配额续测 ${c.quotas.map((q) => `${q.region}×${q.count}`).join(' ')}]`);
+  }
   return a.length ? a.join(' ') : '（全部默认）';
 }
 
@@ -158,6 +165,9 @@ function fillForm(c) {
   $('#inDebug').checked = c.debug;
   setSeg('#segPing', 'ping', c.httping ? 'http' : 'tcp');
   setSeg('#segDl', 'dl', c.disable_download ? 'off' : 'on');
+  $('#inQuotaEnabled').checked = !!c.quota_enabled;
+  renderQuotas(c.quotas);
+  updateQuotaUI();
   refreshDerived();
 }
 
@@ -186,11 +196,56 @@ function refreshDerived() {
   $('#cliArgs').textContent = toCliArgs(collect());
 }
 
+// ── 地区配额续测 ────────────────────────────────
+function readQuotas() {
+  return $$('#quotaRows .quota-row')
+    .map((row) => ({
+      region: row.querySelector('.q-region').value.trim(),
+      count: +row.querySelector('.q-count').value || 0,
+    }))
+    .filter((q) => q.region && q.count > 0);
+}
+
+function addQuotaRow(region, count) {
+  const row = document.createElement('div');
+  row.className = 'quota-row';
+  row.innerHTML = `
+    <input type="text" class="q-region" placeholder="HKG / US">
+    <input type="number" class="q-count" min="1" value="5">
+    <button type="button" class="q-del" title="删除">×</button>`;
+  row.querySelector('.q-region').value = region || '';
+  row.querySelector('.q-count').value = count || 5;
+  row.querySelectorAll('input').forEach((el) => {
+    el.addEventListener('input', refreshDerived);
+    el.addEventListener('change', refreshDerived);
+  });
+  $('#quotaRows').appendChild(row);
+}
+
+function renderQuotas(list) {
+  $('#quotaRows').innerHTML = '';
+  if (!list || !list.length) {
+    addQuotaRow();
+    return;
+  }
+  list.forEach((q) => addQuotaRow(q.region, q.count));
+}
+
+function updateQuotaUI() {
+  const on = $('#inQuotaEnabled').checked;
+  $('#quotaBody').classList.toggle('hidden', !on);
+  $('#btnAddQuota').classList.toggle('hidden', !on);
+}
+
 // ── 任务控制 ────────────────────────────────────
 async function start() {
   const cfg = collect();
   if (!cfg.ip_text && !cfg.ip_file) {
     toast('请指定 IP 段文件或直接填 IP 段', 'err');
+    return;
+  }
+  if (cfg.quota_enabled && !cfg.quotas.length) {
+    toast('已开启地区配额续测，请至少填写一个地区码和数量', 'err');
     return;
   }
   try {
@@ -524,6 +579,20 @@ async function uploadGitHub() {
     const btn = ev.target.closest('.rowbtn');
     if (btn) copy(btn.dataset.copy);
   });
+
+  $('#inQuotaEnabled').addEventListener('change', () => {
+    updateQuotaUI();
+    refreshDerived();
+  });
+  $('#btnAddQuota').addEventListener('click', () => addQuotaRow());
+  $('#quotaRows').addEventListener('click', (e) => {
+    const btn = e.target.closest('.q-del');
+    if (!btn) return;
+    btn.parentElement.remove();
+    if (!$$('#quotaRows .quota-row').length) addQuotaRow();
+    refreshDerived();
+  });
+  if (!$$('#quotaRows .quota-row').length) renderQuotas([]);
 
   refreshDerived();
 })();

@@ -157,6 +157,18 @@
     <div class="progress" id="progressBar"><i id="progressFill"></i></div>
     <div class="statusline"><span id="statusText">就绪，配置左侧参数后开始</span></div>
 
+    <div class="quota-box" id="quotaBox">
+      <div class="quota-head">
+        <label class="check"><input type="checkbox" id="inQuotaEnabled"> 地区配额续测</label>
+        <span class="spacer"></span>
+        <button class="btn ghost sm hidden" id="btnAddQuota">+ 添加地区</button>
+      </div>
+      <div class="quota-body hidden" id="quotaBody">
+        <em class="note">开启后按下方配额持续续测：每个地区凑够数量即停，或候选 IP 全部测完为止。地区码可填机场码（如 HKG）或国家码（如 US）。</em>
+        <div class="quota-rows" id="quotaRows"></div>
+      </div>
+    </div>
+
     <div class="toolbar">
       <input type="text" id="filterText" placeholder="筛选 IP 或地区码" autocomplete="off">
       <span class="spacer"></span>

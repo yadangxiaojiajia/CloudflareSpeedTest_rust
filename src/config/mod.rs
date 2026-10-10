@@ -9,6 +9,15 @@ use crate::core::constants::{
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+/// 一条地区配额：`region` 为机场码(HKG)或国家/地区码(US)，`count` 为需要的节点数
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct QuotaItem {
+    #[serde(default)]
+    pub region: String,
+    #[serde(default)]
+    pub count: usize,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, clap::Args)]
 #[serde(default)]
 pub struct SpeedConfig {
@@ -91,6 +100,22 @@ pub struct SpeedConfig {
     /// 调试输出
     #[arg(long = "debug", action = clap::ArgAction::SetTrue)]
     pub debug: bool,
+
+    /// 是否启用「地区配额续测」（仅 Web，不参与 CLI）
+    #[arg(skip)]
+    pub quota_enabled: bool,
+
+    /// 地区配额列表：每项 = 地区码 + 需要数量
+    #[arg(skip)]
+    pub quotas: Vec<QuotaItem>,
+
+    /// 抽样模式候选池大小（0 用默认 2000）
+    #[arg(skip)]
+    pub sample_pool: usize,
+
+    /// --allip 模式候选池内存上限（0 表示不限，受网段实际大小约束）
+    #[arg(skip)]
+    pub allip_cap: usize,
 }
 
 impl Default for SpeedConfig {
@@ -116,6 +141,10 @@ impl Default for SpeedConfig {
             output: DEFAULT_OUTPUT_FILE.to_string(),
             disable_download: false,
             debug: false,
+            quota_enabled: false,
+            quotas: Vec::new(),
+            sample_pool: 2000,
+            allip_cap: 20000,
         }
     }
 }

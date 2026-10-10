@@ -2,6 +2,7 @@
 
 use crate::core::constants::DEFAULT_INPUT_FILE;
 use ipnetwork::IpNetwork;
+use rand::seq::SliceRandom;
 use rand::Rng;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
@@ -100,6 +101,110 @@ fn expand_ip_range(cidr: &str, test_all: bool, ips: &mut Vec<IpAddr>) -> Result<
         }
     }
     Ok(())
+}
+
+/// 解析 IP 段来源为网络列表（不展开），供候选池构建复用
+fn parse_networks(ip_file: &str, ip_text: &str) -> Result<Vec<IpNetwork>, String> {
+    let mut nets = Vec::new();
+    if !ip_text.is_empty() {
+        for part in ip_text.split([',', '\n', ';']) {
+            push_net(part, &mut nets)?;
+        }
+    } else {
+        let file_path = if ip_file.is_empty() {
+            DEFAULT_INPUT_FILE
+        } else {
+            ip_file
+        };
+        let path = Path::new(file_path);
+        if !path.exists() {
+            return Err(format!("IP 段文件 [{}] 不存在", file_path));
+        }
+        let file = File::open(path).map_err(|e| format!("打开文件 [{}] 失败: {}", file_path, e))?;
+        for line in BufReader::new(file).lines() {
+            let line = line.unwrap_or_default();
+            push_net(&line, &mut nets)?;
+        }
+    }
+    Ok(nets)
+}
+
+fn push_net(s: &str, nets: &mut Vec<IpNetwork>) -> Result<(), String> {
+    let s = s.trim();
+    if s.is_empty() || s.starts_with('#') {
+        return Ok(());
+    }
+    let n: IpNetwork = s
+        .parse()
+        .map_err(|e| format!("解析 CIDR [{}] 失败: {}", s, e))?;
+    nets.push(n);
+    Ok(())
+}
+
+/// 在某个网络内随机取一个 IP
+fn random_ip_in(net: &IpNetwork, rng: &mut impl Rng) -> IpAddr {
+    match net {
+        IpNetwork::V4(n) => {
+            let base = u32::from_be_bytes(n.network().octets());
+            let size = n.size();
+            let off = if size <= 1 { 0 } else { rng.gen_range(0..size) };
+            IpAddr::V4(std::net::Ipv4Addr::from(base.wrapping_add(off)))
+        }
+        IpNetwork::V6(n) => {
+            let base = u128::from_be_bytes(n.network().octets());
+            let size = n.size();
+            let off = if size <= 1 { 0 } else { rng.gen_range(0..size) };
+            IpAddr::V6(std::net::Ipv6Addr::from(base.wrapping_add(off)))
+        }
+    }
+}
+
+/// 构建「地区配额续测」的有限候选池并打乱：
+/// - `all_ip` 为真：顺序枚举网段内 IP，最多 `allip_cap` 个（0 表示不限，但仍受网段实际大小限制）
+/// - 否则：在各网段内随机取 IP，去重后凑够 `sample_cap` 个（0 时用默认 2000）
+pub fn build_candidate_pool(
+    ip_file: &str,
+    ip_text: &str,
+    all_ip: bool,
+    sample_cap: usize,
+    allip_cap: usize,
+) -> Result<Vec<IpAddr>, String> {
+    let nets = parse_networks(ip_file, ip_text)?;
+    if nets.is_empty() {
+        return Err("未解析到任何 IP 段".to_string());
+    }
+    let mut rng = rand::thread_rng();
+    let mut pool: Vec<IpAddr> = Vec::new();
+
+    if all_ip {
+        let cap = allip_cap;
+        'outer: for net in &nets {
+            for ip in net.iter() {
+                pool.push(ip);
+                if cap > 0 && pool.len() >= cap {
+                    break 'outer;
+                }
+            }
+        }
+    } else {
+        let cap = if sample_cap == 0 { 2000 } else { sample_cap };
+        let mut seen = std::collections::HashSet::new();
+        let mut attempts = 0usize;
+        while pool.len() < cap && attempts < cap.saturating_mul(20).max(1000) {
+            attempts += 1;
+            let net = match nets.choose(&mut rng) {
+                Some(n) => n,
+                None => break,
+            };
+            let ip = random_ip_in(net, &mut rng);
+            if seen.insert(ip) {
+                pool.push(ip);
+            }
+        }
+    }
+
+    pool.shuffle(&mut rng);
+    Ok(pool)
 }
 
 #[cfg(test)]
