@@ -17,8 +17,9 @@ use tokio::time::Instant;
 pub struct DownloadConfig {
     pub url: String,
     pub timeout: Duration,
+    pub min_speed: f64, // MB/s，全局速度门槛
+    /// 达标多少个就停（--dn）；0 表示不设上限，整个队列测完
     pub test_count: usize,
-    pub min_speed: f64, // MB/s
     pub port: u16,
     pub disable: bool,
     pub debug: bool,
@@ -29,8 +30,8 @@ impl Default for DownloadConfig {
         Self {
             url: DEFAULT_DOWNLOAD_URL.to_string(),
             timeout: Duration::from_secs(DEFAULT_DOWNLOAD_TIMEOUT_SECS),
-            test_count: DEFAULT_DOWNLOAD_TEST_COUNT,
             min_speed: 0.0,
+            test_count: DEFAULT_DOWNLOAD_TEST_COUNT,
             port: 443,
             disable: false,
             debug: false,
@@ -45,9 +46,6 @@ impl DownloadConfig {
         }
         if self.timeout <= Duration::ZERO {
             self.timeout = Duration::from_secs(DEFAULT_DOWNLOAD_TIMEOUT_SECS);
-        }
-        if self.test_count == 0 {
-            self.test_count = DEFAULT_DOWNLOAD_TEST_COUNT;
         }
     }
 }
@@ -84,11 +82,9 @@ pub async fn run_download(
     if ip_data.is_empty() {
         return DownloadSpeedSet::new(Vec::new());
     }
-    // 禁用下载测速，或速度下限为 0（表示不做速度筛选）—— 直接沿用延迟排序结果
-    if config.disable || config.min_speed == 0.0 {
-        if config.disable {
-            hooks.log("download", "已禁用下载测速，仅输出延迟结果");
-        }
+    // 只有「明确禁用」才跳过；速度门槛为 0 表示不筛速度，但仍然要逐个测完
+    if config.disable {
+        hooks.log("download", "已禁用下载测速，仅输出延迟结果");
         return DownloadSpeedSet::new(ip_data);
     }
 
@@ -106,7 +102,6 @@ pub async fn run_download(
     let path_and_query = format!("{}{}", path, query);
 
     let total = ip_data.len();
-    let actual_target = config.test_count.min(total);
     let min_bytes = config.min_speed * 1024.0 * 1024.0;
     let cfg_timeout = config.timeout;
 
@@ -156,11 +151,14 @@ pub async fn run_download(
         }
     });
 
-    let concurrency = DOWNLOAD_CONCURRENCY.min(config.test_count).max(1);
+    // 并发只由常量决定，不再被「要几个结果」限制
+    let concurrency = DOWNLOAD_CONCURRENCY.max(1);
     let mut stream = download_stream.buffer_unordered(concurrency);
 
     let mut speed_set: Vec<CloudflareIpData> = Vec::new();
     let mut done = 0usize;
+    // --dn：达标多少个就停；0 = 不设上限，整个队列测完
+    let target = config.test_count;
 
     while let Some(result) = stream.next().await {
         if hooks.cancelled() {
@@ -169,32 +167,26 @@ pub async fn run_download(
         done += 1;
         if let Some(data) = result {
             hooks.item(&data);
-            if data.download_speed >= min_bytes {
+            // 速度必须 > 0（排除测速失败）且达到全局门槛
+            if data.download_speed > 0.0 && data.download_speed >= min_bytes {
                 speed_set.push(data);
-                hooks.tick(
-                    "download",
-                    speed_set.len(),
-                    actual_target,
-                    &format!("达标 {}", speed_set.len()),
-                );
-                if speed_set.len() >= actual_target {
-                    break;
-                }
-            } else {
-                hooks.tick(
-                    "download",
-                    speed_set.len(),
-                    actual_target,
-                    &format!("已测 {}/{}", done, total),
-                );
             }
-        } else {
-            hooks.tick(
+        }
+        hooks.tick(
+            "download",
+            done,
+            total,
+            &format!("已测 {}/{}，达标 {}", done, total, speed_set.len()),
+        );
+
+        // 达标数够了立刻收工，队列里剩下的不再测
+        if target > 0 && speed_set.len() >= target {
+            let left = total.saturating_sub(done);
+            hooks.log(
                 "download",
-                speed_set.len(),
-                actual_target,
-                &format!("已测 {}/{}", done, total),
+                &format!("达标 {} 个，提前结束下载测速（队列剩 {} 个未测）", speed_set.len(), left),
             );
+            break;
         }
     }
 

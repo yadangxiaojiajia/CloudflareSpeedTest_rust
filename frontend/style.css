@@ -144,6 +144,9 @@ input:focus, textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 3p
 .btn.sm { padding: 3px 8px; font-size: 11.5px; }
 .ico { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; }
 .btn.primary .ico, .btn.danger .ico { fill: currentColor; stroke: none; }
+.btn.keep { border-color: var(--primary); color: var(--primary); font-weight: 600; }
+.btn.keep:hover:not(:disabled) { background: #fff7f0; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
 .hidden { display: none !important; }
 
 .cli-preview { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--border); }
@@ -166,23 +169,6 @@ input:focus, textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 3p
   background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
   padding: 8px 12px; font-size: 13px; box-shadow: var(--shadow);
 }
-
-/* ---------- 地区配额续测 ---------- */
-.quota-box {
-  background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
-  padding: 10px 12px; box-shadow: var(--shadow);
-}
-.quota-head { display: flex; align-items: center; gap: 8px; }
-.quota-head .check { font-size: 13px; font-weight: 600; color: #40464e; }
-.quota-body { margin-top: 8px; }
-.quota-rows { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
-.quota-row { display: grid; grid-template-columns: 1fr 92px 32px; gap: 8px; align-items: center; }
-.quota-row .q-count { text-align: center; }
-.quota-row .q-del {
-  border: 1px solid var(--border); background: #fff; color: var(--muted);
-  border-radius: 6px; cursor: pointer; font-size: 16px; line-height: 1; padding: 5px 0;
-}
-.quota-row .q-del:hover { color: var(--danger); border-color: var(--danger); background: #fdf1f1; }
 
 /* ---------- 工具栏 ---------- */
 .toolbar { display: flex; align-items: center; gap: 8px; }
@@ -217,6 +203,28 @@ td.ip { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 }
 .rowbtn:hover { color: var(--primary); }
 .empty { padding: 40px 0; text-align: center; color: var(--muted); font-size: 13px; }
+
+.saved {
+  margin-top: 10px; background: var(--panel); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden;
+}
+.saved-head { display: flex; align-items: center; gap: 8px; padding: 8px 12px; font-size: 13px; }
+.saved-head b { font-weight: 600; color: var(--primary); }
+.batch { border-top: 1px solid var(--border); }
+.batch summary {
+  display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+  cursor: pointer; font-size: 12.5px; list-style: none;
+}
+.batch summary::-webkit-details-marker { display: none; }
+.batch summary::before { content: '▸'; color: var(--muted); font-size: 10px; }
+.batch[open] summary::before { content: '▾'; }
+.batch summary .b-time { color: var(--muted); }
+.batch summary .batch-del { margin-left: auto; }
+.batch-body { padding: 0 12px 10px; max-height: 30vh; overflow: auto; }
+.batch-body table { font-size: 12px; }
+.batch-body th, .batch-body td { padding: 5px 8px; border-bottom: 1px solid #f1f3f5; text-align: left; white-space: nowrap; }
+.batch-body th { background: #fafbfc; position: sticky; top: 0; }
+.batch-more { padding: 6px 0; color: var(--muted); font-size: 12px; }
 
 /* ---------- 日志 ---------- */
 .logbox {

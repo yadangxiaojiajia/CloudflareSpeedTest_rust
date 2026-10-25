@@ -1,6 +1,5 @@
 //! 测速内核：算法与上游 Rust 核心一致，仅增加进度回调与取消钩子
 
-pub mod colo_country;
 pub mod constants;
 pub mod data;
 pub mod download;

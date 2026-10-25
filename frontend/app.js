@@ -5,6 +5,7 @@ const $$ = (s) => Array.from(document.querySelectorAll(s));
 
 const state = {
   results: [],
+  saved: [],
   running: false,
   sortKey: 'speed',
   sortDir: -1,
@@ -89,10 +90,13 @@ function setupSidebarResize() {
 
 // ── 参数采集 / 回填 ─────────────────────────────
 function collect() {
+  // --dn 允许填 0（不设上限），不能用 `|| 默认值` 兜底，否则 0 会被吃掉
+  const dnRaw = $('#inDnNum').value.trim();
+  const dn = dnRaw === '' ? 10 : Math.max(0, Number(dnRaw) || 0);
   return {
     routines: +$('#inRoutines').value || 200,
     ping_times: +$('#inPingTimes').value || 4,
-    download_num: +$('#inDnNum').value || 10,
+    download_num: dn,
     download_time: +$('#inDnTime').value || 10,
     port: +$('#inPort').value || 443,
     url: $('#inUrl').value.trim(),
@@ -106,14 +110,9 @@ function collect() {
     print_num: +$('#inPrintNum').value,
     ip_file: 'ip.txt',
     ip_text: $('#inIpText').value.trim(),
-    all_ip: $('#inAllIp').checked,
     output: $('#inOutput').value.trim() || 'result.csv',
     disable_download: $('#segDl button.on').dataset.dl === 'off',
     debug: $('#inDebug').checked,
-    quota_enabled: $('#inQuotaEnabled').checked,
-    quotas: readQuotas(),
-    sample_pool: 2000,
-    allip_cap: 20000,
   };
 }
 
@@ -135,13 +134,9 @@ function toCliArgs(c) {
   if (c.print_num !== 10) a.push(`-p ${c.print_num}`);
   if (c.ip_file && c.ip_file !== 'ip.txt') a.push(`-f ${c.ip_file}`);
   if (c.ip_text) a.push(`--ip ${c.ip_text.replace(/\n/g, ',')}`);
-  if (c.all_ip) a.push('--allip');
   if (c.output && c.output !== 'result.csv') a.push(`-o ${c.output}`);
   if (c.disable_download) a.push('--dd');
   if (c.debug) a.push('--debug');
-  if (c.quota_enabled && c.quotas.length) {
-    a.push(`[配额续测 ${c.quotas.map((q) => `${q.region}×${q.count}`).join(' ')}]`);
-  }
   return a.length ? a.join(' ') : '（全部默认）';
 }
 
@@ -161,13 +156,9 @@ function fillForm(c) {
   $('#inPrintNum').value = c.print_num;
   $('#inIpText').value = c.ip_text;
   $('#inOutput').value = c.output;
-  $('#inAllIp').checked = c.all_ip;
   $('#inDebug').checked = c.debug;
   setSeg('#segPing', 'ping', c.httping ? 'http' : 'tcp');
   setSeg('#segDl', 'dl', c.disable_download ? 'off' : 'on');
-  $('#inQuotaEnabled').checked = !!c.quota_enabled;
-  renderQuotas(c.quotas);
-  updateQuotaUI();
   refreshDerived();
 }
 
@@ -196,47 +187,6 @@ function refreshDerived() {
   $('#cliArgs').textContent = toCliArgs(collect());
 }
 
-// ── 地区配额续测 ────────────────────────────────
-function readQuotas() {
-  return $$('#quotaRows .quota-row')
-    .map((row) => ({
-      region: row.querySelector('.q-region').value.trim(),
-      count: +row.querySelector('.q-count').value || 0,
-    }))
-    .filter((q) => q.region && q.count > 0);
-}
-
-function addQuotaRow(region, count) {
-  const row = document.createElement('div');
-  row.className = 'quota-row';
-  row.innerHTML = `
-    <input type="text" class="q-region" placeholder="HKG / US">
-    <input type="number" class="q-count" min="1" value="5">
-    <button type="button" class="q-del" title="删除">×</button>`;
-  row.querySelector('.q-region').value = region || '';
-  row.querySelector('.q-count').value = count || 5;
-  row.querySelectorAll('input').forEach((el) => {
-    el.addEventListener('input', refreshDerived);
-    el.addEventListener('change', refreshDerived);
-  });
-  $('#quotaRows').appendChild(row);
-}
-
-function renderQuotas(list) {
-  $('#quotaRows').innerHTML = '';
-  if (!list || !list.length) {
-    addQuotaRow();
-    return;
-  }
-  list.forEach((q) => addQuotaRow(q.region, q.count));
-}
-
-function updateQuotaUI() {
-  const on = $('#inQuotaEnabled').checked;
-  $('#quotaBody').classList.toggle('hidden', !on);
-  $('#btnAddQuota').classList.toggle('hidden', !on);
-}
-
 // ── 任务控制 ────────────────────────────────────
 async function start() {
   const cfg = collect();
@@ -244,9 +194,15 @@ async function start() {
     toast('请指定 IP 段文件或直接填 IP 段', 'err');
     return;
   }
-  if (cfg.quota_enabled && !cfg.quotas.length) {
-    toast('已开启地区配额续测，请至少填写一个地区码和数量', 'err');
-    return;
+  // 当前轮结果会被新一轮覆盖，先提醒保留
+  if (state.results.length && !state.saved.length) {
+    if (!confirm(`当前有 ${state.results.length} 个结果尚未保留，开始新一轮会覆盖它们。\n\n点「确定」继续（结果将丢失），点「取消」返回并先点「保留当前结果」。`)) {
+      return;
+    }
+  } else if (state.results.length) {
+    if (!confirm(`当前有 ${state.results.length} 个未保留的结果，开始新一轮会覆盖它们（已保留的 ${state.saved.length} 批不受影响）。继续？`)) {
+      return;
+    }
   }
   try {
     await api('/api/start', {
@@ -286,6 +242,7 @@ function setRunning(on) {
     $('#progressFill').className = '';
     $('#progressFill').style.width = '0%';
   }
+  refreshKeepButton();
 }
 
 function setProgress(cur, total) {
@@ -371,9 +328,12 @@ function renderTable() {
   const tb = $('#tbody');
   tb.innerHTML = '';
   $('#emptyBox').classList.toggle('hidden', rows.length > 0);
-  $('#statResult').textContent = `结果 ${rows.length}`;
+  const LIMIT = 1000;
+  const shown = rows.length > LIMIT ? rows.slice(0, LIMIT) : rows;
+  $('#statResult').textContent =
+    rows.length > LIMIT ? `结果 ${rows.length}（表格仅显示前 ${LIMIT}）` : `结果 ${rows.length}`;
 
-  rows.forEach((r, i) => {
+  shown.forEach((r, i) => {
     const tr = document.createElement('tr');
     const goodDelay = r.delay > 0 && r.delay < 180;
     const goodSpeed = r.speed >= 1;
@@ -389,6 +349,7 @@ function renderTable() {
       <td><button class="rowbtn" data-copy="${r.ip}:${r.port}#${r.remark}">复制</button></td>`;
     tb.appendChild(tr);
   });
+  refreshKeepButton();
 }
 
 function copy(text) {
@@ -396,6 +357,154 @@ function copy(text) {
     () => toast('已复制', 'ok'),
     () => toast('复制失败，请手动选择', 'err')
   );
+}
+
+// ── 保留当前结果 ────────────────────────────────
+const SAVED_KEY = 'cfst-saved-batches';
+const SAVED_LIMIT = 1000;
+
+function loadSaved() {
+  try {
+    const raw = localStorage.getItem(SAVED_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr) ? arr.filter((b) => b && Array.isArray(b.rows)) : [];
+  } catch (_) {
+    return [];
+  }
+}
+
+function persistSaved() {
+  try {
+    localStorage.setItem(SAVED_KEY, JSON.stringify(state.saved));
+  } catch (_) {
+    toast('保留批次过大，未能写入本地存储（本次会话内仍有效）', 'err');
+  }
+}
+
+/// 导出 / 复制 / 上报的统一数据源：所有保留批次 + 当前轮
+function allRows() {
+  const merged = [];
+  state.saved.forEach((b) => merged.push(...b.rows));
+  merged.push(...state.results);
+  return merged;
+}
+
+function keepCurrent() {
+  if (!state.results.length) return toast('当前没有可保留的结果', 'err');
+  const rows = state.results.slice();
+  state.saved.push({ at: Date.now(), rows });
+  persistSaved();
+  state.results = [];
+  renderTable();
+  renderSaved();
+  toast(`已保留第 ${state.saved.length} 批（${rows.length} 个节点）`, 'ok');
+}
+
+function removeSaved(idx) {
+  state.saved.splice(idx, 1);
+  persistSaved();
+  renderSaved();
+  toast('已删除该批', 'ok');
+}
+
+function clearSaved() {
+  if (!state.saved.length) return;
+  if (!confirm(`确定清空全部 ${state.saved.length} 批保留结果？此操作不可撤销。`)) return;
+  state.saved = [];
+  persistSaved();
+  renderSaved();
+  toast('已清空全部保留结果', 'ok');
+}
+
+function batchTableHtml(rows) {
+  const shown = rows.length > SAVED_LIMIT ? rows.slice(0, SAVED_LIMIT) : rows;
+  const body = shown
+    .map(
+      (r, i) => `<tr>
+      <td>${i + 1}</td>
+      <td class="ip">${r.ip}</td>
+      <td>${(r.loss * 100).toFixed(0)}%</td>
+      <td>${r.delay} ms</td>
+      <td>${r.speed.toFixed(2)} MB/s</td>
+      <td>${r.colo || '-'}</td>
+      <td><button class="rowbtn" data-copy="${r.ip}:${r.port}#${r.remark}">复制</button></td>
+    </tr>`
+    )
+    .join('');
+  const note =
+    rows.length > SAVED_LIMIT
+      ? `<div class="batch-more">仅显示前 ${SAVED_LIMIT} 行，共 ${rows.length} 行</div>`
+      : '';
+  return `<table>
+    <thead><tr><th>#</th><th>IP</th><th>丢包</th><th>延迟</th><th>速度</th><th>地区</th><th></th></tr></thead>
+    <tbody>${body}</tbody>
+  </table>${note}`;
+}
+
+function renderSaved() {
+  const box = $('#savedBox');
+  const list = $('#savedList');
+  $('#savedCount').textContent = state.saved.length;
+  $('#savedTotal').textContent = state.saved.reduce((n, b) => n + b.rows.length, 0);
+  box.classList.toggle('hidden', !state.saved.length);
+  list.innerHTML = '';
+  state.saved.forEach((b, i) => {
+    const d = document.createElement('details');
+    d.className = 'batch';
+
+    const sum = document.createElement('summary');
+    const label = document.createElement('span');
+    label.textContent = `第 ${i + 1} 批`;
+    const meta = document.createElement('span');
+    meta.className = 'b-time';
+    meta.textContent = `${timeStr(b.at)} · ${b.rows.length} 个节点`;
+    const del = document.createElement('button');
+    del.className = 'btn ghost sm batch-del';
+    del.textContent = '删除';
+    del.onclick = (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      removeSaved(i);
+    };
+    sum.append(label, meta, del);
+
+    const body = document.createElement('div');
+    body.className = 'batch-body';
+    d.addEventListener('toggle', () => {
+      if (d.open && !body.dataset.rendered) {
+        body.innerHTML = batchTableHtml(b.rows);
+        body.dataset.rendered = '1';
+      }
+    });
+
+    d.append(sum, body);
+    list.appendChild(d);
+  });
+  refreshKeepButton();
+}
+
+function refreshKeepButton() {
+  $('#btnKeep').disabled = state.running || !state.results.length;
+}
+
+function toCsv(rows) {
+  const head = 'IP 地址,已发送,已接收,丢包率,平均延迟,下载速度(MB/s),地区码';
+  const lines = rows.map((r) =>
+    [r.ip, r.sent, r.received, r.loss.toFixed(2), r.delay, r.speed.toFixed(2), r.colo].join(',')
+  );
+  return '\ufeff' + [head, ...lines].join('\n');
+}
+
+function downloadCsv(rows) {
+  const blob = new Blob([toCsv(rows)], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `cfst-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 // ── 上报配置与上报 ──────────────────────────────
@@ -444,6 +553,11 @@ async function uploadWorker() {
     toast('请先填写 Worker 域名和 UUID', 'err');
     return;
   }
+  const rows = allRows();
+  if (!rows.length) {
+    toast('没有可上报的节点', 'err');
+    return;
+  }
   try {
     const r = await api('/api/upload/worker', {
       method: 'POST',
@@ -453,6 +567,7 @@ async function uploadWorker() {
         uuid: uuid,
         limit: +$('#cfgLimit').value || 0,
         clear: $('#cfgClear').checked,
+        rows: rows,
       }),
     });
     toast(`已上报 ${r.count} 个 IP`, 'ok');
@@ -468,6 +583,11 @@ async function uploadGitHub() {
     toast('请先填写 GitHub 仓库和 Token', 'err');
     return;
   }
+  const rows = allRows();
+  if (!rows.length) {
+    toast('没有可上报的节点', 'err');
+    return;
+  }
   try {
     const r = await api('/api/upload/github', {
       method: 'POST',
@@ -477,6 +597,7 @@ async function uploadGitHub() {
         token: $('#cfgToken').value.trim(),
         path: $('#cfgPath').value.trim(),
         limit: +$('#cfgLimit').value || 0,
+        rows: rows,
       }),
     });
     toast(`已上传 ${r.count} 个 IP 到 GitHub`, 'ok');
@@ -488,6 +609,9 @@ async function uploadGitHub() {
 // ── 初始化 ──────────────────────────────────────
 (async function init() {
   setupSidebarResize();
+
+  state.saved = loadSaved();
+  renderSaved();
 
   try {
     const r = await api('/api/config');
@@ -542,12 +666,22 @@ async function uploadGitHub() {
 
   $('#btnClearLog').onclick = () => ($('#logBody').innerHTML = '');
   $('#btnCopyAll').onclick = () => {
-    if (!state.results.length) return toast('没有可复制的结果', 'err');
-    copy(visibleRows().map((r) => `${r.ip}:${r.port}#${r.remark}`).join('\n'));
+    const rows = allRows();
+    if (!rows.length) return toast('没有可复制的节点', 'err');
+    copy(rows.map((r) => `${r.ip}:${r.port}#${r.remark}`).join('\n'));
   };
   $('#btnExport').onclick = () => {
-    window.location.href = '/api/download?file=' + encodeURIComponent($('#inOutput').value.trim() || 'result.csv');
+    const rows = allRows();
+    if (!rows.length) return toast('没有可导出的节点', 'err');
+    downloadCsv(rows);
+    toast(`已导出 ${rows.length} 个节点`, 'ok');
   };
+  $('#btnKeep').onclick = keepCurrent;
+  $('#btnClearSaved').onclick = clearSaved;
+  $('#savedList').addEventListener('click', (ev) => {
+    const btn = ev.target.closest('.rowbtn');
+    if (btn) copy(btn.dataset.copy);
+  });
 
   $('#btnReportCfg').onclick = () => $('#mask').classList.remove('hidden');
   $('#btnCfgClose').onclick = () => $('#mask').classList.add('hidden');
@@ -579,20 +713,6 @@ async function uploadGitHub() {
     const btn = ev.target.closest('.rowbtn');
     if (btn) copy(btn.dataset.copy);
   });
-
-  $('#inQuotaEnabled').addEventListener('change', () => {
-    updateQuotaUI();
-    refreshDerived();
-  });
-  $('#btnAddQuota').addEventListener('click', () => addQuotaRow());
-  $('#quotaRows').addEventListener('click', (e) => {
-    const btn = e.target.closest('.q-del');
-    if (!btn) return;
-    btn.parentElement.remove();
-    if (!$$('#quotaRows .quota-row').length) addQuotaRow();
-    refreshDerived();
-  });
-  if (!$$('#quotaRows .quota-row').length) renderQuotas([]);
 
   refreshDerived();
 })();

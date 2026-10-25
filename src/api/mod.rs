@@ -89,13 +89,16 @@ async fn get_status(State(s): State<AppState>) -> Json<serde_json::Value> {
 async fn start(
     State(s): State<AppState>,
     Json(cfg): Json<SpeedConfig>,
-) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     // 记住这次参数，下次打开界面自动回填
     let _ = config::save(&s.data_dir, &cfg);
     match s.runner.start(cfg) {
         Ok(true) => Ok(Json(json!({ "ok": true }))),
-        Ok(false) => Err((StatusCode::CONFLICT, "已有测速任务在运行".into())),
-        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e)),
+        Ok(false) => Err((
+            StatusCode::CONFLICT,
+            Json(json!({ "error": "已有测速任务在运行" })),
+        )),
+        Err(e) => Err((StatusCode::BAD_REQUEST, Json(json!({ "error": e })))),
     }
 }
 
@@ -163,6 +166,21 @@ fn apply_str(field: &mut String, v: Option<&serde_json::Value>) {
     }
 }
 
+/// 上报数据来源：优先用前端传来的 rows（含所有保留批次），
+/// 没传就退回当前轮的后端结果。
+fn pick_rows(s: &AppState, v: &serde_json::Value) -> Vec<crate::task::Row> {
+    if let Some(arr) = v.get("rows").and_then(|x| x.as_array()) {
+        let rows: Vec<crate::task::Row> = arr
+            .iter()
+            .filter_map(|x| serde_json::from_value(x.clone()).ok())
+            .collect();
+        if !rows.is_empty() {
+            return rows;
+        }
+    }
+    s.runner.results()
+}
+
 async fn upload_worker(
     State(s): State<AppState>,
     Json(v): Json<serde_json::Value>,
@@ -173,7 +191,7 @@ async fn upload_worker(
     let limit = v.get("limit").and_then(|x| x.as_u64()).unwrap_or(0) as usize;
     let clear = v.get("clear").and_then(|x| x.as_bool()).unwrap_or(true);
 
-    let rows = s.runner.results();
+    let rows = pick_rows(&s, &v);
     let n = upload::upload_worker(&rc, &rows, limit, clear)
         .await
         .map_err(|e| (StatusCode::BAD_GATEWAY, Json(json!({ "error": e }))))?;
@@ -196,7 +214,7 @@ async fn upload_github(
         .unwrap_or_else(|| rc.github_token.clone());
     let limit = v.get("limit").and_then(|x| x.as_u64()).unwrap_or(0) as usize;
 
-    let rows = s.runner.results();
+    let rows = pick_rows(&s, &v);
     let n = upload::upload_github(&rc, &token, &rows, limit)
         .await
         .map_err(|e| (StatusCode::BAD_GATEWAY, Json(json!({ "error": e }))))?;

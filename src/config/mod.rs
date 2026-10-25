@@ -9,15 +9,6 @@ use crate::core::constants::{
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-/// 一条地区配额：`region` 为机场码(HKG)或国家/地区码(US)，`count` 为需要的节点数
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct QuotaItem {
-    #[serde(default)]
-    pub region: String,
-    #[serde(default)]
-    pub count: usize,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, clap::Args)]
 #[serde(default)]
 pub struct SpeedConfig {
@@ -29,7 +20,7 @@ pub struct SpeedConfig {
     #[arg(short = 't', long, default_value_t = DEFAULT_PING_TIMES)]
     pub ping_times: u32,
 
-    /// 下载测速数量（达标 IP 数量）
+    /// 达标多少个就停止下载测速（0 = 不设上限，整个队列测完）
     #[arg(long = "dn", default_value_t = DEFAULT_DOWNLOAD_TEST_COUNT)]
     pub download_num: usize,
 
@@ -85,10 +76,6 @@ pub struct SpeedConfig {
     #[arg(long = "ip", default_value = "")]
     pub ip_text: String,
 
-    /// 测速全部 IP（不做抽样）
-    #[arg(long = "allip", action = clap::ArgAction::SetTrue)]
-    pub all_ip: bool,
-
     /// 输出结果文件
     #[arg(short = 'o', long, default_value_t = String::from(DEFAULT_OUTPUT_FILE))]
     pub output: String,
@@ -100,22 +87,6 @@ pub struct SpeedConfig {
     /// 调试输出
     #[arg(long = "debug", action = clap::ArgAction::SetTrue)]
     pub debug: bool,
-
-    /// 是否启用「地区配额续测」（仅 Web，不参与 CLI）
-    #[arg(skip)]
-    pub quota_enabled: bool,
-
-    /// 地区配额列表：每项 = 地区码 + 需要数量
-    #[arg(skip)]
-    pub quotas: Vec<QuotaItem>,
-
-    /// 抽样模式候选池大小（0 用默认 2000）
-    #[arg(skip)]
-    pub sample_pool: usize,
-
-    /// --allip 模式候选池内存上限（0 表示不限，受网段实际大小约束）
-    #[arg(skip)]
-    pub allip_cap: usize,
 }
 
 impl Default for SpeedConfig {
@@ -137,14 +108,9 @@ impl Default for SpeedConfig {
             print_num: DEFAULT_PRINT_NUM,
             ip_file: DEFAULT_INPUT_FILE.to_string(),
             ip_text: String::new(),
-            all_ip: false,
             output: DEFAULT_OUTPUT_FILE.to_string(),
             disable_download: false,
             debug: false,
-            quota_enabled: false,
-            quotas: Vec::new(),
-            sample_pool: 2000,
-            allip_cap: 20000,
         }
     }
 }
@@ -201,9 +167,6 @@ impl SpeedConfig {
         }
         if !self.ip_text.is_empty() {
             a.push(format!("--ip {}", self.ip_text.replace('\n', ",")));
-        }
-        if self.all_ip {
-            a.push("--allip".into());
         }
         if !self.output.is_empty() && self.output != d.output {
             a.push(format!("-o {}", self.output));

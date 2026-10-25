@@ -22,7 +22,7 @@ pub async fn run_speedtest(
     };
     hooks.log("load", &format!("正在加载 IP 段：{}", source));
 
-    let ips = ip::load_ip_ranges(&cfg.ip_file, &cfg.ip_text, cfg.all_ip)?;
+    let ips = ip::load_ip_ranges(&cfg.ip_file, &cfg.ip_text)?;
     if ips.is_empty() {
         return Err("未加载到任何 IP 地址，请检查 IP 数据文件或参数".to_string());
     }
@@ -95,8 +95,8 @@ pub async fn run_speedtest(
     let mut dl_cfg = DownloadConfig {
         url: cfg.url.clone(),
         timeout: Duration::from_secs(cfg.download_time),
-        test_count: cfg.download_num,
         min_speed: cfg.min_speed,
+        test_count: cfg.download_num,
         port: cfg.port,
         disable: cfg.disable_download,
         debug: cfg.debug,
@@ -104,13 +104,18 @@ pub async fn run_speedtest(
     dl_cfg.normalize();
 
     if !dl_cfg.disable {
+        let target = if dl_cfg.test_count > 0 {
+            format!("达标 {} 个即停", dl_cfg.test_count)
+        } else {
+            "不设上限，全部测完".to_string()
+        };
         hooks.log(
             "download",
             &format!(
-                "开始下载测速（下限: {:.2} MB/s, 数量: {}, 队列: {}）",
+                "开始下载测速（门槛: {:.2} MB/s, 队列: {} 个, {}）",
                 dl_cfg.min_speed,
-                dl_cfg.test_count,
-                filtered.len()
+                filtered.len(),
+                target
             ),
         );
     }

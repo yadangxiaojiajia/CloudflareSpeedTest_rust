@@ -1,10 +1,10 @@
 //! 测速任务调度：单任务串行 + 取消 + 事件广播（事件格式与参考 Web UI 对齐）
 
-use crate::config::{QuotaItem, SpeedConfig};
+use crate::config::SpeedConfig;
 use crate::core::data::{bytes_to_mb, export_csv, CloudflareIpData};
-use crate::core::{run_speedtest, Hooks, HooksRef};
+use crate::core::{run_speedtest, Hooks};
 use crate::utils::now_ms;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -15,17 +15,28 @@ const HISTORY_LIMIT: usize = 500;
 const BROADCAST_CAP: usize = 256;
 
 /// 一行测速结果
-#[derive(Debug, Clone, Serialize)]
+///
+/// 同时支持 Serialize / Deserialize：前端「保留当前结果」会把多批节点合并后
+/// 回传给上报接口，所以这里要能从 JSON 还原。
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Row {
     pub ip: String,
+    #[serde(default)]
     pub sent: u32,
+    #[serde(default)]
     pub received: u32,
+    #[serde(default)]
     pub loss: f32,
+    #[serde(default)]
     pub delay: u64,
+    #[serde(default)]
     pub speed: f64,
+    #[serde(default)]
     pub colo: String,
+    #[serde(default)]
     pub port: u16,
     /// 节点备注，如「东京成田-37.79MB/s」，复制/上报共用
+    #[serde(default)]
     pub remark: String,
 }
 
@@ -211,16 +222,12 @@ impl Runner {
         let data_dir = self.data_dir.clone();
         let output = cfg.output.clone();
         let print_num = cfg.print_num;
+        let download_num = cfg.download_num;
         let port = cfg.port;
         let cancel_flag = self.cancel.clone();
 
         tokio::spawn(async move {
-            let quota_mode = cfg.quota_enabled && !cfg.quotas.is_empty();
-            let outcome = if quota_mode {
-                run_quota(&cfg, bridge).await
-            } else {
-                run_speedtest(&cfg, bridge).await
-            };
+            let outcome = run_speedtest(&cfg, bridge).await;
 
             let mut e = if cancel_flag.load(Ordering::SeqCst) {
                 let mut stopped = Event::new("error", "done", "测速已停止");
@@ -228,7 +235,12 @@ impl Runner {
                 stopped
             } else {
                 match outcome {
-                    Ok(rows) => {
+                    Ok(mut rows) => {
+                        // 下载阶段已在达标数 >= download_num 时提前停止；
+                        // 并发会一次涌进多个达标节点，这里再按速度降序截一次
+                        if download_num > 0 && rows.len() > download_num {
+                            rows.truncate(download_num);
+                        }
                         let out = resolve_in(&data_dir, &output);
                         match export_csv(&rows, &out.to_string_lossy()) {
                             Ok(n) => {
@@ -290,154 +302,50 @@ impl Runner {
     }
 }
 
-/// 单个地区的配额达成情况
-struct QuotaProgress {
-    region: String,
-    need: usize,
-    have: usize,
-}
-
-/// 按地区清点已得节点数
-fn tally(quotas: &[&QuotaItem], nodes: &[CloudflareIpData]) -> Vec<QuotaProgress> {
-    quotas
-        .iter()
-        .map(|q| {
-            let have = nodes
-                .iter()
-                .filter(|n| crate::core::colo_country::region_matches(&q.region, &n.ping_data.colo))
-                .count();
-            QuotaProgress {
-                region: q.region.clone(),
-                need: q.count,
-                have,
-            }
-        })
-        .collect()
-}
-
-fn fmt_prog(prog: &[QuotaProgress]) -> String {
-    prog.iter()
-        .map(|p| format!("{} {}/{}", p.region, p.have, p.need))
-        .collect::<Vec<_>>()
-        .join("，")
-}
-
-/// 地区配额续测：建有限候选池 → 分批跑现有流程 → 按地区清点 → 凑够即停 / 池尽即停
-async fn run_quota(cfg: &SpeedConfig, hooks: HooksRef) -> Result<Vec<CloudflareIpData>, String> {
-    use crate::core::ip;
-    use std::collections::HashSet;
-    use std::net::IpAddr;
-
-    let quotas: Vec<&QuotaItem> = cfg
-        .quotas
-        .iter()
-        .filter(|q| !q.region.trim().is_empty() && q.count > 0)
-        .collect();
-    if quotas.is_empty() {
-        return Err("没有有效的地区配额（地区码为空或数量为 0）".to_string());
-    }
-
-    let pool = ip::build_candidate_pool(
-        &cfg.ip_file,
-        &cfg.ip_text,
-        cfg.all_ip,
-        cfg.sample_pool,
-        cfg.allip_cap,
-    )?;
-    if pool.is_empty() {
-        return Err("候选池为空，请检查 IP 段设置".to_string());
-    }
-    hooks.log(
-        "quota",
-        &format!(
-            "候选池共 {} 个 IP；配额：{}",
-            pool.len(),
-            fmt_prog(&tally(&quotas, &[]))
-        ),
-    );
-
-    let batch = cfg.routines.clamp(50, 2000);
-    let total = pool.len();
-    let mut accumulated: Vec<CloudflareIpData> = Vec::new();
-    let mut seen: HashSet<IpAddr> = HashSet::new();
-    let mut idx = 0usize;
-    let mut round = 0usize;
-    let mut no_colo = false;
-
-    while idx < total {
-        if hooks.cancelled() {
-            break;
-        }
-        round += 1;
-        let end = (idx + batch).min(total);
-        let chunk_len = end - idx;
-        let ip_text: Vec<String> = pool[idx..end].iter().map(|ip| ip.to_string()).collect();
-        idx = end;
-
-        let mut tcfg = cfg.clone();
-        tcfg.ip_file = String::new();
-        tcfg.ip_text = ip_text.join(",");
-        tcfg.all_ip = true;
-        // 强制 HTTPing：用 HEAD 廉价获取每个候选 IP 的地区码；下载测速仍按用户开关
-        tcfg.httping = true;
-        tcfg.cfcolo = String::new();
-        tcfg.download_num = chunk_len.max(cfg.download_num);
-
-        hooks.log(
-            "quota",
-            &format!("第 {} 批：测 {} 个 IP（累计 {}/{}）", round, chunk_len, idx, total),
-        );
-
-        match run_speedtest(&tcfg, hooks.clone()).await {
-            Ok(nodes) => {
-                for n in nodes {
-                    if seen.insert(n.ping_data.ip) {
-                        accumulated.push(n);
-                    }
-                }
-            }
-            Err(e) => hooks.log("quota", &format!("本批出错：{}", e)),
-        }
-
-        if hooks.cancelled() {
-            break;
-        }
-
-        // 首批一个地区码都没识别到 → 提前止损，避免白白测完整个池
-        if round == 1 && !accumulated.iter().any(|n| !n.ping_data.colo.is_empty()) {
-            no_colo = true;
-            hooks.log(
-                "quota",
-                "⚠ 首批未识别到任何地区码，已停止。请检查测速地址是否返回 cf-ray（建议用 Cloudflare 官方地址）",
-            );
-            break;
-        }
-
-        let prog = tally(&quotas, &accumulated);
-        hooks.log("quota", &format!("配额进度：{}", fmt_prog(&prog)));
-        if prog.iter().all(|p| p.have >= p.need) {
-            hooks.log("quota", "所有地区配额已满足，结束续测");
-            return Ok(accumulated);
-        }
-    }
-
-    if !no_colo {
-        let prog = tally(&quotas, &accumulated);
-        for p in prog.iter().filter(|p| p.have < p.need) {
-            hooks.log(
-                "quota",
-                &format!("{} 仅 {}/{}，IP 已测完，无更多可测", p.region, p.have, p.need),
-            );
-        }
-    }
-    Ok(accumulated)
-}
-
 fn resolve_in(dir: &std::path::Path, name: &str) -> PathBuf {
     let p = PathBuf::from(name);
     if p.is_absolute() {
         p
     } else {
         dir.join(p)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Row;
+
+    /// 「保留当前结果」把多批节点合并后回传上报接口，
+    /// 所以 Row 必须能原样走一遍 JSON 往返。
+    #[test]
+    fn row_json_roundtrip() {
+        let row = Row {
+            ip: "104.16.0.1".into(),
+            sent: 4,
+            received: 4,
+            loss: 0.0,
+            delay: 42,
+            speed: 12.34,
+            colo: "HKG".into(),
+            port: 443,
+            remark: "香港-12.34MB/s".into(),
+        };
+        let text = serde_json::to_string(&row).unwrap();
+        let back: Row = serde_json::from_str(&text).unwrap();
+        assert_eq!(back.ip, row.ip);
+        assert_eq!(back.port, row.port);
+        assert_eq!(back.delay, row.delay);
+        assert_eq!(back.colo, row.colo);
+        assert_eq!(back.remark, row.remark);
+        assert!((back.speed - row.speed).abs() < 1e-9);
+    }
+
+    /// 前端只传最小字段时也要能还原（缺失字段走 default）
+    #[test]
+    fn row_json_minimal_fields() {
+        let back: Row = serde_json::from_str(r#"{"ip":"1.1.1.1"}"#).unwrap();
+        assert_eq!(back.ip, "1.1.1.1");
+        assert_eq!(back.port, 0);
+        assert_eq!(back.remark, "");
     }
 }

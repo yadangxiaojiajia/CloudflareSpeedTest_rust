@@ -110,8 +110,9 @@
 
     <div class="grid3">
       <div class="field">
-        <label>测速节点数量 <span class="hint">--dn</span></label>
-        <input type="number" id="inDnNum" min="1" value="10">
+        <label>达标即停 <span class="hint">--dn</span></label>
+        <input type="number" id="inDnNum" min="0" value="10" title="达标这么多个就停止下载测速；填 0 表示不设上限">
+        <em class="note">0 = 不限</em>
       </div>
       <div class="field">
         <label>测速时间 s <span class="hint">--dt</span></label>
@@ -124,12 +125,15 @@
     </div>
 
     <div class="field">
+      <em class="note">下载阶段：达标节点数一到「达标即停」就收工，队列剩下的不再测；延迟阶段始终全量</em>
+    </div>
+
+    <div class="field">
       <label>输出文件 <span class="hint">-o</span></label>
       <input type="text" id="inOutput" value="result.csv">
     </div>
 
     <div class="checks">
-      <label class="check"><input type="checkbox" id="inAllIp"> 测速全部 IP <span class="hint">--allip</span></label>
       <label class="check"><input type="checkbox" id="inDebug"> 调试输出 <span class="hint">--debug</span></label>
     </div>
 
@@ -157,22 +161,13 @@
     <div class="progress" id="progressBar"><i id="progressFill"></i></div>
     <div class="statusline"><span id="statusText">就绪，配置左侧参数后开始</span></div>
 
-    <div class="quota-box" id="quotaBox">
-      <div class="quota-head">
-        <label class="check"><input type="checkbox" id="inQuotaEnabled"> 地区配额续测</label>
-        <span class="spacer"></span>
-        <button class="btn ghost sm hidden" id="btnAddQuota">+ 添加地区</button>
-      </div>
-      <div class="quota-body hidden" id="quotaBody">
-        <em class="note">开启后按下方配额持续续测：每个地区凑够数量即停，或候选 IP 全部测完为止。地区码可填机场码（如 HKG）或国家码（如 US）。</em>
-        <div class="quota-rows" id="quotaRows"></div>
-      </div>
-    </div>
-
     <div class="toolbar">
       <input type="text" id="filterText" placeholder="筛选 IP 或地区码" autocomplete="off">
       <span class="spacer"></span>
-      <button class="btn ghost" id="btnCopyAll" title="复制全部结果，格式 IP:端口#地区-速度">
+      <button class="btn keep" id="btnKeep" disabled title="把当前结果归档；之后跑新一轮不会覆盖">
+        保留当前结果
+      </button>
+      <button class="btn ghost" id="btnCopyAll" title="复制全部保留的节点，格式 IP:端口#地区-速度">
         <svg viewBox="0 0 24 24" class="ico"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
         复制节点
       </button>
@@ -208,6 +203,15 @@
         <tbody id="tbody"></tbody>
       </table>
       <div class="empty" id="emptyBox">还没有测速结果</div>
+    </div>
+
+    <div class="saved hidden" id="savedBox">
+      <div class="saved-head">
+        <span>已保留 <b id="savedCount">0</b> 批 · 共 <b id="savedTotal">0</b> 个节点</span>
+        <span class="spacer"></span>
+        <button class="btn ghost sm" id="btnClearSaved">清空全部</button>
+      </div>
+      <div id="savedList"></div>
     </div>
 
     <div class="logbox">
